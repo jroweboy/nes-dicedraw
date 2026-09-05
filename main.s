@@ -1,21 +1,58 @@
 
+DEBUG = 1
+
+; Segment definitions for the memory layout
+.segment "ZEROPAGE" :mem $0 :size $100 :zp
+.segment "STACK" :mem $100 :size $100 :bss
+.segment "OAM" :mem $200 :size $100 :bss
+.segment "BSS" :mem $300 :size $500 :bss
+.segment "HEADER" :mem $0 :size $10 :out :fill
+.segment "CODE" :mem $8000 :size $8000 :out :fill
+
+.include "popslide.inc"
+
 ; constants
 OAM = $02
 
+PPUCTRL = $2000
+PPUADDR = $2006
+PPUDATA = $2007
+
+BUTTON_A      = 1 << 7
+BUTTON_B      = 1 << 6
+BUTTON_SELECT = 1 << 5
+BUTTON_START  = 1 << 4
+BUTTON_UP     = 1 << 3
+BUTTON_DOWN   = 1 << 2
+BUTTON_LEFT   = 1 << 1
+BUTTON_RIGHT  = 1 << 0
+
+; Global jump table
+.define JmpTableList \
+  GameTitle-1, \
+  GameLoad-1, \
+  GamePlay-1
+
+.enum Jump
+    GAMEMODE_TITLE
+    GAMEMODE_LOAD
+    GAMEMODE_PLAY
+.endenum
 
 ; RAM values
 
-.segment "ZEROPAGE" :mem $0 :size $100 :zp
+.zeropage
 
 temp: .res 16
 ; save enough space for both controllers
 buttons: .res 2
 frame_count: .res 1
+main_complete: .res 1
+ppuctrl_mirror: .res 1
+game_state: .res 1
+level: .res 1
 
-.segment "STACK" :mem $100 :size $100 :bss
-
-
-.segment "OAM" :mem $200 :size $100 :bss
+.segment "OAM"
 .repeat 64, I
     .ident(.sprintf("spr_x_%d", I)): .res 1
     .ident(.sprintf("spr_tile_%d", I)): .res 1
@@ -23,22 +60,20 @@ frame_count: .res 1
     .ident(.sprintf("spr_y_%d", I)): .res 1
 .endrepeat
 
-.segment "BSS" :mem $300 :size $500 :bss
+.bss
 
-main_complete: .res 1
 
 ; ROM code / data
+.segment "HEADER"
+.byte "NES",$1A,$02,$00,$A0,$D8 ; set mapper 218
 
-.segment "HEADER" :mem $0 :size $10 :fill
-.byte "NES",$02,$00,$A0,$D8 ; set mapper 218
-
-.segment "CODE" :mem $8000 :size $8000 :fill
+.code
 
 .org $fffa
 .word Nmi, Reset, $0000
 .reloc
 
-Reset:
+.proc Reset
     sei        ; ignore IRQs
     cld        ; disable decimal mode
     ldx #$40
@@ -72,7 +107,28 @@ Reset:
 @vblankwait2:
     bit $2002
     bpl @vblankwait2
-    jmp StartFrame
+
+ColdBoot:
+    ; Clear out the nametables and attributes
+    ldx #$20
+    stx PPUADDR
+    ldx #0
+    stx PPUADDR
+    lda #$ff
+    -   sta PPUDATA
+        sta PPUDATA
+        sta PPUDATA
+        sta PPUDATA
+        sta PPUDATA
+        sta PPUDATA
+        sta PPUDATA
+        sta PPUDATA
+        dex
+        bne -
+
+    lda #$80 | $10
+    sta ppuctrl_mirror
+    sta PPUCTRL
 
 Main:
     lda frame_count
@@ -80,8 +136,45 @@ Main:
 -   cmp frame_count
     beq -
 StartFrame:
+    ldx game_state
+    jsr JmpEngine
     dec main_complete
     jmp Main
+.endproc
+
+.proc JmpEngine
+    lda JmpTableListHi,x
+    pha
+    lda JmpTableListLo,x
+    pha
+    rts
+
+JmpTableListLo:
+.lobytes JmpTableList
+JmpTableListHi:
+.hibytes JmpTableList
+.endproc
+
+.proc GameTitle
+    lda buttons
+    and #BUTTON_A | BUTTON_B | BUTTON_START
+    beq Exit
+        inc game_state
+Exit:
+.if DEBUG
+    ; skip the title screen
+    inc game_state
+.endif
+    rts
+.endproc
+
+.proc GameLoad
+    rts
+.endproc
+
+.proc GamePlay
+    rts
+.endproc
 
 .proc Nmi
     pha
@@ -91,8 +184,8 @@ StartFrame:
     pha
 
     ; Don't run OAMDMA or controller reads during a lag frame
-    bit main_complete
-    bvc MainNotComplete
+    lda main_complete
+    bmi MainNotComplete
 
     ; run the background update
     jsr popslide_terminate_blit
@@ -126,3 +219,44 @@ MainNotComplete:
     pla
     rti
 .endproc
+
+.jsbegin
+/**
+ * @param {string} data
+ * @returns {number[]}
+ */
+function parsePattern(data, key) {
+  const text = data.trim().replace(/^[^|]*\||\|[^|]*$/mg, '').replace(/\n/g, '');
+  if (text.length !== 64) throw new Error(`Bad CHR tile: ${text}`);
+  const arr = new Array(16).fill(0);
+  for (let i = 0, c = ''; c = text.charAt(i); ++i) {
+    const off = i >>> 3;
+    const lo = off;
+    const hi = off | 8;
+    const col = ~i & 7;
+    const val = key[c] || 0;
+    if (val & 1) {
+      arr[lo] |= 1 << col;
+    }
+    if (val & 2) {
+      arr[hi] |= 1 << col;
+    }
+  }
+  return arr;
+}
+
+const DICE_FACE = parsePattern(`
+    |xx::::::|
+    |x:      |
+    |:      *|
+    |:    ***|
+    |:   ****|
+    |:  *****|
+    |:  *****|
+    |: ******|
+`, {'x': 0, ':': 1, ' ': 2, '*': 3});
+
+// put the chr bytes into the assembler
+a.label("DICE_FACE");
+a.byte(DICE_FACE);
+.jsend

@@ -3,7 +3,9 @@
         {
             "allowJavascript": true,
             "name": "diceroll",
-            "sources": ["main.s","popslide64.s"]
+            "sources": ["main.s","popslide64.s"],
+            "debug": 1,
+            "dbgfile": "diceroll.mlb"
         }
     ]
 }
