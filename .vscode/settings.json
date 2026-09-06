@@ -1,0 +1,8 @@
+{
+    "runOnSave.commands": [
+        {
+            "command": "js65 build"
+        }
+    ],
+    "runOnSave.defaultRunIn": "terminal",
+}
