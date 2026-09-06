@@ -345,15 +345,13 @@ Exit:
 .proc AnimateMovement
     sta R0
     stx R1
-    lda #16
-    sta R7
 NextFrame:
     ldy R1
-    lda R0 clc adc player_x_sub,y sta R0
     jsr DrawPlayer
     jsr WaitForNMI
     ; jsr WaitForNMI
-    dec R7
+    ldy R1
+    lda R0 clc adc player_x_sub,y and #$0f sta player_x_sub,y
     bne NextFrame
     rts
 .endproc
