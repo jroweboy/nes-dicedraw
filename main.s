@@ -343,15 +343,18 @@ Exit:
 .endproc
 
 .proc AnimateMovement
-    sta R0
-    stx R1
+MoveDiff := R0
+Direction := R1
+    sta MoveDiff
+    stx Direction
 NextFrame:
-    ldy R1
+    ldy Direction
+    lda MoveDiff clc adc player_x_sub,y and #$0f sta player_x_sub,y
     jsr DrawPlayer
     jsr WaitForNMI
     ; jsr WaitForNMI
-    ldy R1
-    lda R0 clc adc player_x_sub,y and #$0f sta player_x_sub,y
+    ldy Direction
+    lda player_x_sub,y
     bne NextFrame
     rts
 .endproc
