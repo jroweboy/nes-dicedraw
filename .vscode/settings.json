@@ -4,5 +4,8 @@
             "command": "js65 build"
         }
     ],
-    "runOnSave.defaultRunIn": "terminal",
+    "runOnSave.onlyRunOnManualSave": true,
+    "runOnSave.defaultRunIn": "backend",
+    "runOnSave.shell": "powershell",
+    "debug.internalConsoleOptions": "neverOpen"
 }

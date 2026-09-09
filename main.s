@@ -345,6 +345,7 @@ Exit:
 .proc AnimateMovement
 MoveDiff := R0
 Direction := R1
+
     sta MoveDiff
     stx Direction
 NextFrame:
@@ -385,7 +386,7 @@ NextFrame:
     clc adc #8
     sta spr_y_1,x sta spr_y_3,x
     lda player_sprite_tile sta spr_tile_0,x sta spr_tile_1,x sta spr_tile_2,x sta spr_tile_3,x
-    lda #0 ora square_color,y sta spr_attr_0,x
+    lda #0   ora square_color,y sta spr_attr_0,x
     lda #$80 ora square_color,y sta spr_attr_1,x
     lda #$40 ora square_color,y sta spr_attr_2,x
     lda #$c0 ora square_color,y sta spr_attr_3,x
@@ -397,6 +398,70 @@ SquareYOffset:
 SquareOAMOffset:
     .byte 0, 16, 32, 48, 64, 80
 .endproc
+
+.scope Position
+.jsbegin
+const FRAMES = 16;
+
+const DIRECTIONS = [
+    [ 0, -1], // Up
+    [ 0,  1], // down
+    [-1,  0], // left
+    [ 1,  0], // right
+    [ 1,  1], // Rotate
+];
+
+const base_position = [
+    [  0, -16], // top row
+    [-16,   0], // mid row
+    [  0,   0],
+    [ 16,   0],
+    [  0,  16], // bot row
+    [  0,  32], // under row
+];
+
+const positions = [
+    base_position,
+];
+
+const lerp = (start, end, dt) => start + (end - start) * (dt / FRAMES)
+const lerp2d = (p1, p2, dt) => [lerp(p1[0], p2[0], dt), lerp(p1[1], p2[1], dt)]
+const eq = (p1, p2) => p1[0] === p2[0] && p1[1] === p2[1]
+
+for (let dir = 0; dir < DIRECTIONS; dir++) {
+    const d = DIRECTIONS[dir];
+    const horizontal = d[0] !== 0;
+    const diff = (horizontal) ? d[0] : d[1];
+    // find which ones are moving in this direction
+    let affected = [];
+    if (eq(d, [1, 1])) {
+        // Rotation so just hard code the affected ones
+        affected = [
+            base_position[0],
+            base_position[1],
+            base_position[3],
+            base_position[4],
+        ];
+    } else {
+        affected = base_position.filter( p => eq(p, [0, 0]) || (horizontal) ? p[0] !== 0 : p[1] !== 0);
+    }
+    for (let i = 0; i < affected.length; i++) {
+        const from = affected[i];
+        const to = affected[ ((i + diff) < 0 ? affected.length - 1 : i + diff) % affected.length ];
+        const [x, y] = lerp2d(from, to, 1);
+        const [dx, dy] = [from[0] - x, from[1] - y];
+
+    }
+}
+
+
+a.label("SquareXSpeedLo");
+a.label("SquareXSpeedHi");
+a.label("SquareYSpeedLo");
+a.label("SquareYSpeedHi");
+
+.jsend
+.endscope
 
 ; random ordering chosen by fair dice roll
 RandomOrderTable:
