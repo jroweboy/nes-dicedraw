@@ -6,6 +6,5 @@
     ],
     "runOnSave.onlyRunOnManualSave": true,
     "runOnSave.defaultRunIn": "backend",
-    "runOnSave.shell": "powershell",
     "debug.internalConsoleOptions": "neverOpen"
 }

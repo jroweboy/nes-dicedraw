@@ -273,7 +273,7 @@ Exit:
 
 
     ; reset player position
-    ldx #16
+    ldx #8
     stx player_x
     dex
     stx player_y
@@ -282,8 +282,6 @@ Exit:
     sta player_y_sub
 
     lda #16
-
-
     ; Draw player CHR into offscreen ram
     ldx #0 stx PPUADDR stx PPUADDR
     -   lda DiceCHR,x
@@ -375,17 +373,18 @@ NextFrame:
     ; x = oam offset
     ; y = which square to draw
     lda SquareOAMOffset,y tax
-    lda player_x asl asl asl ora player_x_sub
+    lda player_x asl asl asl asl ora player_x_sub
     clc adc SquareXOffset,y
     sta spr_x_0,x sta spr_x_1,x
     clc adc #8
     sta spr_x_2,x sta spr_x_3,x
-    lda player_y asl asl asl ora player_y_sub
+    lda player_y asl asl asl asl ora player_y_sub
     clc adc SquareYOffset,y
     sta spr_y_0,x sta spr_y_2,x
     clc adc #8
     sta spr_y_1,x sta spr_y_3,x
-    lda player_sprite_tile sta spr_tile_0,x sta spr_tile_1,x sta spr_tile_2,x sta spr_tile_3,x
+    lda player_sprite_tile
+    sta spr_tile_0,x sta spr_tile_1,x sta spr_tile_2,x sta spr_tile_3,x
     lda #0   ora square_color,y sta spr_attr_0,x
     lda #$80 ora square_color,y sta spr_attr_1,x
     lda #$40 ora square_color,y sta spr_attr_2,x
