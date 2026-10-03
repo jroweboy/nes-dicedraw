@@ -60,7 +60,7 @@ BUTTON_RIGHT  = 1 << 0
 
 .zeropage
 
-temp: .res 8
+temp: .res 16
 R0 := temp
 R1 := temp+1
 R2 := temp+2
@@ -69,7 +69,14 @@ R4 := temp+4
 R5 := temp+5
 R6 := temp+6
 R7 := temp+7
-.exportzp R0, R1, R2, R3, R4, R5, R6, R7
+R8 := temp+8
+R9 := temp+9
+Ra := temp+10
+Rb := temp+11
+Rc := temp+12
+Rd := temp+13
+Re := temp+14
+Rf := temp+15
 
 ; save enough space for both controllers
 buttons: .res 2
@@ -91,6 +98,7 @@ player_sprite_tile: .res 1
 square_color: .res 6
 
 screen_bottom: .res 1
+screen_right: .res 1
 scroll_x: .res 1
 
 .segment "OAM"
@@ -311,31 +319,62 @@ Exit:
 .endproc
 
 .proc ProcessPlayerMovement
+Target := R2
     lda buttons and #BUTTON_UP | BUTTON_DOWN
-    beq Exit
+    beq CheckLR
     ldx #PLAYER_Y_OFFSET
     and #BUTTON_UP
     beq Down
         ldy player_y
         beq +
             dey
+            sty Target
             sty player_y
         +
         lda #-1
-        jmp AnimateMovement
+        jsr AnimateMovement
+        jmp FinishUD
 Down:
     lda #1
     ldy player_y
     cmp screen_bottom
     beq +
-        dey
-        sty player_y
+        iny
+        sty Target
     +
-    jmp AnimateMovement
+    jsr AnimateMovement
+FinishUD:
+    lda Target
+    sta player_y
+    rts
 
+CheckLR:
     lda buttons and #BUTTON_LEFT | BUTTON_RIGHT
     beq Exit
-
+    ldx #PLAYER_X_OFFSET
+    and #BUTTON_LEFT
+    beq Right
+        ldy player_x
+        beq +
+            dey
+            sty Target
+            sty player_x
+        +
+        lda #-1
+        jsr AnimateMovement
+        jmp FinishLR
+Right:
+    lda #1
+    ldy player_x
+    cmp screen_right
+    beq +
+        iny
+        sty Target
+    +
+    jsr AnimateMovement
+FinishLR:
+    lda Target
+    sta player_x
 Exit:
     rts
 .endproc
@@ -343,18 +382,34 @@ Exit:
 .proc AnimateMovement
 MoveDiff := R0
 Direction := R1
+Target := R2
+CurrFrame := R3
+
+XPtr := R8
+YPtr := Ra
 
     sta MoveDiff
     stx Direction
+    lda #0
+    sta CurrFrame
 NextFrame:
+    ldy CurrFrame
+    lda #<FrameTableX
+    sta XPtr
+    lda #>FrameTableX
+    sta XPtr+1
+    lda #<FrameTableY
+    sta YPtr
+    lda #>FrameTableY
+    sta YPtr+1
     ldy Direction
     lda MoveDiff clc adc player_x_sub,y and #$0f sta player_x_sub,y
+    beq AllDone
     jsr DrawPlayer
     jsr WaitForNMI
-    ; jsr WaitForNMI
-    ldy Direction
-    lda player_x_sub,y
-    bne NextFrame
+    inc CurrFrame
+    jmp NextFrame
+AllDone:
     rts
 .endproc
 
@@ -398,7 +453,6 @@ SquareOAMOffset:
     .byte 0, 16, 32, 48, 64, 80
 .endproc
 
-.scope Position
 .jsbegin
 const FRAMES = 16;
 
@@ -408,6 +462,13 @@ const DIRECTIONS = [
     [-1,  0], // left
     [ 1,  0], // right
     [ 1,  1], // Rotate
+];
+const DIRECTION_NAMES = [
+    "DirectionUp",
+    "DirectionDown",
+    "DirectionLeft",
+    "DirectionRight",
+    "DirectionRotate",
 ];
 
 const base_position = [
@@ -427,7 +488,8 @@ const lerp = (start, end, dt) => start + (end - start) * (dt / FRAMES)
 const lerp2d = (p1, p2, dt) => [lerp(p1[0], p2[0], dt), lerp(p1[1], p2[1], dt)]
 const eq = (p1, p2) => p1[0] === p2[0] && p1[1] === p2[1]
 
-for (let dir = 0; dir < DIRECTIONS; dir++) {
+a.org(0x8270);
+for (let dir = 0; dir < DIRECTIONS.length; dir++) {
     const d = DIRECTIONS[dir];
     const horizontal = d[0] !== 0;
     const diff = (horizontal) ? d[0] : d[1];
@@ -435,32 +497,49 @@ for (let dir = 0; dir < DIRECTIONS; dir++) {
     let affected = [];
     if (eq(d, [1, 1])) {
         // Rotation so just hard code the affected ones
-        affected = [
-            base_position[0],
-            base_position[1],
-            base_position[3],
-            base_position[4],
-        ];
+        affected = [0,1,3,4];
     } else {
-        affected = base_position.filter( p => eq(p, [0, 0]) || (horizontal) ? p[0] !== 0 : p[1] !== 0);
+        for (let i = 0; i < base_position.length; i++) {
+            const p = base_position[i];
+            if (eq(p, [0, 0]) || (horizontal && p[0] !== 0)) {
+                affected.push(i);
+            } else if ((!horizontal && p[1] !== 0)) {
+                affected.push(i);
+            }
+        }
     }
-    for (let i = 0; i < affected.length; i++) {
-        const from = affected[i];
-        const to = affected[ ((i + diff) < 0 ? affected.length - 1 : i + diff) % affected.length ];
-        const [x, y] = lerp2d(from, to, 1);
-        const [dx, dy] = [from[0] - x, from[1] - y];
+    for (let frame = 0; frame < FRAMES; frame++) {
+        const FrameOut = (name) => {
+            const n = `FRAME_${name}_${frame}`;
+            a.reloc();
+            a.label(n);
+            a.byte(frame);
+            for (let i = 0; i < base_position.length; i++) {
+                if (!affected.includes(i)) {
+                    // a.byte(0);
+                    continue;
+                }
+                const from = base_position[affected[i]];
+                const to = affected[ ((i + diff) < 0 ? affected.length - 1 : i + diff) % affected.length ];
 
+                // const [x, y] = lerp2d(from, to, 1);
+            }
+        };
+        FrameOut("X");
+        FrameOut("Y");
     }
 }
-
-
-a.label("SquareXSpeedLo");
-a.label("SquareXSpeedHi");
-a.label("SquareYSpeedLo");
-a.label("SquareYSpeedHi");
-
 .jsend
-.endscope
+
+.reloc
+FrameTableX:
+.repeat 16, I
+    .word .ident(.sprintf("FRAME_X_%d", I))
+.endrepeat
+FrameTableY:
+.repeat 16, I
+    .word .ident(.sprintf("FRAME_Y_%d", I))
+.endrepeat
 
 ; random ordering chosen by fair dice roll
 RandomOrderTable:

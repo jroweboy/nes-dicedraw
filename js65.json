@@ -7,6 +7,7 @@
             "sources": ["main.s", "popslide64.s"],
             "debug": 1,
             "dbgfile": "diceroll.mlb",
+            "mapfile": "diceroll.map",
             "features": [
                 "c_comments",
                 "js65_multiops_per_line"
